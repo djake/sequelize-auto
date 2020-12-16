@@ -83,30 +83,47 @@ export class AutoWriter {
       const modelName = recase(this.options.caseModel, tableName, this.options.singularize);
       const fkFields = this.foreignKeys[t];
       const fkFieldNames = _.keys(fkFields);
-      fkFieldNames.forEach(fkFieldName => {
-        const spec = fkFields[fkFieldName];
-        if (spec.isForeignKey) {
-          const targetModel = recase(this.options.caseModel, spec.foreignSources.target_table as string, this.options.singularize);
-          const sourceProp = recase(this.options.caseProp, fkFieldName);
-          strBelongs += `  ${modelName}.belongsTo(${targetModel}, { foreignKey: "${sourceProp}"});\n`;
 
-          if (spec.isPrimaryKey) {
-            // if FK is also part of the PK, see if there is a "many-to-many" junction
-            const otherKey = _.find(fkFields, k => k.isForeignKey && k.isPrimaryKey && k.source_column !== fkFieldName);
-            if (otherKey) {
-              const otherModel = recase(this.options.caseModel, otherKey.foreignSources.target_table as string, this.options.singularize);
-              const otherProp = recase(this.options.caseProp, otherKey.source_column);
-              strBelongsToMany += `  ${otherModel}.belongsToMany(${targetModel}, { through: ${modelName}${asAny}, foreignKey: "${otherProp}", otherKey: "${sourceProp}" });\n`;
+      const relationNames = fkFieldNames.filter((t => fkFields[t].isForeignKey))
+
+      if(relationNames.length === 2) {
+        const fkFieldNameA = relationNames[0]
+        const specA = fkFields[fkFieldNameA];
+
+        const targetModel = recase(this.options.caseModel, specA.foreignSources.target_table as string, this.options.singularize);
+        const sourceProp = recase(this.options.caseProp, fkFieldNameA);
+
+          // if FK is also part of the PK, see if there is a "many-to-many" junction
+        const otherKey = fkFields[relationNames[1]];
+        const otherModel = recase(this.options.caseModel, otherKey.foreignSources.target_table as string, this.options.singularize);
+        const otherProp = recase(this.options.caseProp, otherKey.source_column);
+        strBelongsToMany += `  ${otherModel}.belongsToMany(${targetModel}, { through: ${modelName}${asAny}, foreignKey: "${otherProp}", otherKey: "${sourceProp}" });\n`;
+      } else {    
+        fkFieldNames.forEach(fkFieldName => {
+          const spec = fkFields[fkFieldName];
+          if (spec.isForeignKey) {
+            const targetModel = recase(this.options.caseModel, spec.foreignSources.target_table as string, this.options.singularize);
+            const sourceProp = recase(this.options.caseProp, fkFieldName);
+            strBelongs += `  ${modelName}.belongsTo(${targetModel}, { foreignKey: "${sourceProp}"});\n`;
+  
+            if (spec.isPrimaryKey) {
+              // if FK is also part of the PK, see if there is a "many-to-many" junction
+              const otherKey = _.find(fkFields, k => k.isForeignKey && k.isPrimaryKey && k.source_column !== fkFieldName);
+              if (otherKey) {
+                const otherModel = recase(this.options.caseModel, otherKey.foreignSources.target_table as string, this.options.singularize);
+                const otherProp = recase(this.options.caseProp, otherKey.source_column);
+                strBelongsToMany += `  ${otherModel}.belongsToMany(${targetModel}, { through: ${modelName}${asAny}, foreignKey: "${otherProp}", otherKey: "${sourceProp}" });\n`;
+              }
             }
+  
+            // use "hasOne" cardinality if this FK is also a single-column Primary or Unique key; else "hasMany"
+            const isOne = ((spec.isPrimaryKey && !_.some(fkFields, f => f.isPrimaryKey && f.source_column !== fkFieldName) ||
+              (spec.isUnique && !_.some(fkFields, f => f.isUnique === spec.isUnique && f.source_column !== fkFieldName))));
+            const hasRel = isOne ? "hasOne" : "hasMany";
+            strBelongs += `  ${targetModel}.${hasRel}(${modelName}, { foreignKey: "${sourceProp}"});\n`;
           }
-
-          // use "hasOne" cardinality if this FK is also a single-column Primary or Unique key; else "hasMany"
-          const isOne = ((spec.isPrimaryKey && !_.some(fkFields, f => f.isPrimaryKey && f.source_column !== fkFieldName) ||
-            (spec.isUnique && !_.some(fkFields, f => f.isUnique === spec.isUnique && f.source_column !== fkFieldName))));
-          const hasRel = isOne ? "hasOne" : "hasMany";
-          strBelongs += `  ${targetModel}.${hasRel}(${modelName}, { foreignKey: "${sourceProp}"});\n`;
-        }
-      });
+        });
+      }
     });
     // belongsToMany must come first
     return strBelongsToMany + strBelongs;

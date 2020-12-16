@@ -28,7 +28,7 @@ export interface IndexSpec {
   name: string;
   /** whether index is primary key */
   primary: boolean;
-  unique: boolean;
+  unique: string | boolean;
   fields: IndexField[];
 
   /** postgres only */
